@@ -1,6 +1,7 @@
-import {posts} from '../posts.js';
+import mongoose from 'mongoose';
+import postModel from '../model/post.schema.js';
 
-function createPost(req, res){
+async function createPost (req, res){
     try {
         const newPost = req.body;
 
@@ -14,10 +15,10 @@ function createPost(req, res){
             throw new Error("Image harus dikirim dam bentuk array dan memiliki minimal 1 elemen")
         }
 
-        let id = posts.length;
         let like = 0;
-        const newerPost = {id, ...newPost, like};
-        posts.push(newerPost);
+        const newerPost = {...newPost, like};
+        const post = new postModel(newerPost);
+        await post.save();
 
         return res.status(201).json({
             message : "Postingan berhasil dibuat",
@@ -32,16 +33,17 @@ function createPost(req, res){
     }
 }
 
-function readAllPost(req, res){
+async function readAllPost(req, res){
     try {
+        const posts = await postModel.find();
+
         if(posts.length > 0){
             res.status(200).json({
                 data: posts
-            })
+            });
         } else {
-            res.status(204).json({
-                message: "Tidak ada postingan",
-                post : posts
+            res.status(404).json({
+                message: "Tidak ada postingan"
             })
         }
     } catch (error) {
@@ -52,21 +54,22 @@ function readAllPost(req, res){
     }
 }
 
-function likeAPost(req, res){
+async function likeAPost(req, res){
     try {
-        let id = req.params.id;
+        let postId = req.params.id;
 
-        let index = posts.findIndex(post => post.id==id);
-        console.log(id);
-        if(index != -1){
-            posts[index].like++;
+        let post = await postModel.findOne({_id: postId});
+
+        if(post !== null){
+            await postModel.updateOne({_id: postId}, {$inc: {like: 1}});
             return res.status(200).json({
                 message: "Postingan berhasil dilike",
-                post: posts[index]
+                post
             });
         } else {
             throw new Error("Postingan tidak ditemukan");
         }
+
     } catch (error) {
         console.log(error);
         return res.status(404).json({
@@ -76,55 +79,62 @@ function likeAPost(req, res){
     
 }
 
-function editAPost(req, res){
+async function editAPost(req, res){
     try {
-        let {caption, image, location} = req.body;
-        let id = req.params.id;
+        const postId = req.params.id;
+        const { caption, image, location } = req.body;
 
-        let index = posts.findIndex(post => post.id==id);
+        // Mempersiapkan objek pembaruan
+        const updateData = {};
 
-        if(index != -1){
-            if(caption != undefined){
-                posts[index].caption = caption;
-            }
-            if(image != undefined){
-                posts[index].image = image;
-            }
-            if(caption != undefined){
-                posts[index].location = location;
-            }
-
-            return res.status(200).json({
-                message: "Post berhasil diperbarui",
-                post: posts[index]
-            });
-        } else {
-            throw new Error("Postingan tidak ditemukan. Gagal mengedit post");
+        if (caption !== undefined) {
+            updateData.caption = caption;
         }
+        if (image !== undefined) {
+            updateData.image = image;
+        }
+        if (location !== undefined) {
+            updateData.location = location;
+        }
+
+        // Menggunakan findByIdAndUpdate untuk memperbarui postingan
+        const updatedPost = await postModel.findByIdAndUpdate(postId, updateData, { new: true });
+
+        if (!updatedPost) {
+            return res.status(404).json({
+                message: "Postingan yang ingin diperbarui tidak ditemukan"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Postingan berhasil diperbarui",
+            post: updatedPost
+        });
     } catch (error) {
         console.log(error);
-        return res.status(404).json({
+        return res.status(500).json({
             message: error.message
         })
     }
 }
 
-function deleteAPost(req, res){
+async function deleteAPost(req, res){
     try {
-        let id = req.params.id;
-        let index = posts.findIndex(post => post.id == id);
+        let postId = req.params.id;
+        let deletedPost = await postModel.findByIdAndDelete(postId);
 
-        if(index != -1){
-            posts.splice(index, 1);
-            return res.status(200).json({
-                message: "Postingan berhasil dihapus"
+        if(!deletedPost){
+            return res.status(404).json({
+                message: "Postingan yang ingin dihapus tidak ditemukan"
             })
-        } else {
-            throw new Error("Postingan tidak ditemukan. Gagal menghapus post");
         }
+
+        return res.status(200).json({
+            message: "Postingan berhasil dihapus"
+        });
     } catch (error) {
         console.log(error);
-        return res.status(404).json({
+        return res.status(500).json({
             message: error.message
         })
     }
